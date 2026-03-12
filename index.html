@@ -9,7 +9,7 @@
 <!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  import { getDatabase, ref, onValue, update, set, get, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
   // ============================================================
   // 🔥 ここにFirebaseの設定を貼り付けてください
@@ -29,7 +29,9 @@
 
   let db = null;
   let checkedItems = {};
+  let customItems = {}; // { "カテゴリ名": ["アイテム1", ...] }
   let playerName = localStorage.getItem("mc_player") || "";
+  let editMode = false;
 
   if (!DEMO_MODE) {
     const app = initializeApp(firebaseConfig);
@@ -197,60 +199,137 @@
     return encodeURIComponent(name).replace(/%/g, '_');
   }
 
-  function loadFromFirebase(callback) {
-    if (!db) { callback({}); return; }
-    const r = ref(db, "checklist");
-    get(r).then(snap => {
-      const data = snap.val() || {};
-      const result = {};
-      Object.keys(data).forEach(k => {
-        result[decodeURIComponent(k.replace(/_/g, '%'))] = data[k];
-      });
-      callback(result);
-    }).catch(() => callback({}));
-  }
-
   function toggleFirebase(itemName) {
     if (!db) {
-      // デモモード: ローカルのみ
       checkedItems[itemName] = checkedItems[itemName]
-        ? null
-        : { by: playerName || "?", at: new Date().toLocaleTimeString("ja-JP", {hour:"2-digit",minute:"2-digit"}) };
+        ? null : { by: playerName || "?", at: new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}) };
       if (!checkedItems[itemName]) delete checkedItems[itemName];
-      renderAll();
-      return;
+      renderAll(); return;
     }
-    const key = safeKey(itemName);
-    const r = ref(db, `checklist/${key}`);
+    const r = ref(db, `checklist/${safeKey(itemName)}`);
     get(r).then(snap => {
-      if (snap.val()) {
-        set(r, null);
-      } else {
-        set(r, {
-          by: playerName || "匿名",
-          at: new Date().toLocaleTimeString("ja-JP", {hour:"2-digit",minute:"2-digit"})
-        });
-      }
+      snap.val()
+        ? set(r, null)
+        : set(r, { by: playerName||"匿名", at: new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}) });
     });
+  }
+
+  // ---- カスタムアイテム操作 ----
+  function saveCustom() {
+    if (db) set(ref(db, "custom_items"), customItems);
+  }
+
+  function getAllItemNames() {
+    const names = [];
+    ALL_CATEGORIES.forEach(c => names.push(...c.items));
+    Object.values(customItems).forEach(arr => names.push(...arr));
+    return names;
+  }
+
+  function addItem(catName, itemName) {
+    itemName = itemName.trim();
+    if (!itemName) return "empty";
+    if (getAllItemNames().includes(itemName)) return "dup";
+    if (!customItems[catName]) customItems[catName] = [];
+    customItems[catName].push(itemName);
+    saveCustom(); return "ok";
+  }
+
+  function deleteItem(catName, itemName, isCustomCat) {
+    if (isCustomCat) {
+      customItems[catName] = (customItems[catName]||[]).filter(i=>i!==itemName);
+      if (!customItems[catName].length) delete customItems[catName];
+    } else {
+      if (!customItems["__deleted__"]) customItems["__deleted__"] = [];
+      if (!customItems["__deleted__"].includes(itemName)) customItems["__deleted__"].push(itemName);
+    }
+    saveCustom();
+    if (db) set(ref(db, `checklist/${safeKey(itemName)}`), null);
+    else delete checkedItems[itemName];
+  }
+
+  function renameItem(catName, oldName, newName, isCustomCat) {
+    newName = newName.trim();
+    if (!newName || oldName===newName) return "same";
+    if (getAllItemNames().filter(n=>n!==oldName).includes(newName)) return "dup";
+    if (isCustomCat) {
+      const arr = customItems[catName]||[];
+      const idx = arr.indexOf(oldName);
+      if (idx===-1) return "notfound";
+      arr[idx] = newName;
+    } else {
+      if (!customItems["__renamed__"]) customItems["__renamed__"] = {};
+      customItems["__renamed__"][oldName] = newName;
+    }
+    saveCustom();
+    if (db) {
+      get(ref(db,`checklist/${safeKey(oldName)}`)).then(snap=>{
+        if (snap.val()) { set(ref(db,`checklist/${safeKey(newName)}`),snap.val()); set(ref(db,`checklist/${safeKey(oldName)}`),null); }
+      });
+    }
+    return "ok";
+  }
+
+  function addCategory(catName) {
+    catName = catName.trim();
+    if (!catName) return "empty";
+    const all = [...ALL_CATEGORIES.map(c=>c.name), ...Object.keys(customItems).filter(k=>k!=="__deleted__"&&k!=="__renamed__")];
+    if (all.includes(catName)) return "dup";
+    customItems[catName] = [];
+    saveCustom(); return "ok";
+  }
+
+  function deleteCategory(catName, isCustomCat) {
+    if (!isCustomCat) return;
+    (customItems[catName]||[]).forEach(item => {
+      if (db) set(ref(db,`checklist/${safeKey(item)}`),null);
+      else delete checkedItems[item];
+    });
+    delete customItems[catName];
+    saveCustom();
   }
 
   function subscribeFirebase() {
     if (!db) return;
-    const r = ref(db, "checklist");
-    onValue(r, snap => {
-      const data = snap.val() || {};
+    onValue(ref(db,"checklist"), snap => {
+      const data = snap.val()||{};
       checkedItems = {};
       Object.keys(data).forEach(k => {
-        const decoded = decodeURIComponent(k.replace(/_/g, '%'));
-        checkedItems[decoded] = data[k];
+        checkedItems[decodeURIComponent(k.replace(/_/g,'%'))] = data[k];
       });
+      renderAll();
+    });
+    onValue(ref(db,"custom_items"), snap => {
+      customItems = snap.val()||{};
+      rebuildCategoryTabs();
       renderAll();
     });
   }
 
-  // ============ UI ============
+  // ============ UI状態 ============
   let currentFilter = "all";
   let searchQuery = "";
+
+  // アイテム名の実際の表示名を取得（rename対応）
+  function displayName(name) {
+    return (customItems["__renamed__"]||{})[name] || name;
+  }
+  function isDeleted(name) {
+    return (customItems["__deleted__"]||[]).includes(name);
+  }
+
+  // 全カテゴリ（ビルトイン＋カスタム）を返す
+  function getCategories() {
+    const cats = ALL_CATEGORIES.map(c => ({
+      name: c.name,
+      isCustom: false,
+      items: c.items.filter(i => !isDeleted(i)).map(i => displayName(i) !== i ? { orig: i, display: displayName(i) } : { orig: i, display: i })
+    }));
+    Object.keys(customItems).filter(k=>k!=="__deleted__"&&k!=="__renamed__").forEach(k => {
+      cats.push({ name: k, isCustom: true, items: (customItems[k]||[]).map(i=>({ orig:i, display:i })) });
+    });
+    return cats;
+  }
 
   function renderAll() {
     renderProgress();
@@ -258,92 +337,192 @@
   }
 
   function renderProgress() {
+    const cats = getCategories();
+    const total = cats.reduce((s,c)=>s+c.items.length,0);
     const count = Object.keys(checkedItems).length;
-    const pct = Math.round((count / TOTAL) * 100);
+    const pct = total ? Math.round((count/total)*100) : 0;
     document.getElementById("prog-count").textContent = count;
-    document.getElementById("prog-total").textContent = TOTAL;
-    document.getElementById("prog-pct").textContent = pct + "%";
-    document.getElementById("prog-bar-fill").style.width = pct + "%";
+    document.getElementById("prog-total").textContent = total;
+    document.getElementById("prog-pct").textContent = pct+"%";
+    document.getElementById("prog-bar-fill").style.width = pct+"%";
   }
 
   function renderItems() {
     const container = document.getElementById("items-container");
     container.innerHTML = "";
     const q = searchQuery.toLowerCase();
+    const cats = getCategories();
 
-    ALL_CATEGORIES.forEach(cat => {
+    cats.forEach(cat => {
       if (currentFilter !== "all" && currentFilter !== cat.name) return;
+      const filtered = cat.items.filter(it => !q || it.display.toLowerCase().includes(q));
+      if (filtered.length === 0 && !editMode) return;
 
-      const filtered = cat.items.filter(item =>
-        !q || item.toLowerCase().includes(q)
-      );
-      if (filtered.length === 0) return;
-
-      const catChecked = filtered.filter(i => checkedItems[i]).length;
-      const catPct = Math.round((catChecked / filtered.length) * 100);
+      const catChecked = filtered.filter(it=>checkedItems[it.display]||checkedItems[it.orig]).length;
+      const catPct = filtered.length ? Math.round((catChecked/filtered.length)*100) : 0;
 
       const section = document.createElement("section");
       section.className = "cat-section";
 
+      // カテゴリヘッダー
       const header = document.createElement("div");
       header.className = "cat-header";
-      header.innerHTML = `
-        <span class="cat-name">${cat.name}</span>
-        <span class="cat-stat">${catChecked}/${filtered.length} <span class="cat-pct">${catPct}%</span></span>
-      `;
+      let headerHTML = `<span class="cat-name">${cat.name}${cat.isCustom ? ' <span class="custom-badge">カスタム</span>' : ''}</span>`;
+      headerHTML += `<span class="cat-stat">${catChecked}/${filtered.length} <span class="cat-pct">${catPct}%</span></span>`;
+      if (editMode) {
+        headerHTML += `<div class="edit-cat-btns">
+          <button class="edit-btn add-item-btn" data-cat="${cat.name}" data-custom="${cat.isCustom}">＋アイテム追加</button>
+          ${cat.isCustom ? `<button class="edit-btn del-cat-btn danger" data-cat="${cat.name}">🗑 カテゴリ削除</button>` : ''}
+        </div>`;
+      }
+      header.innerHTML = headerHTML;
       section.appendChild(header);
 
       const grid = document.createElement("div");
       grid.className = "item-grid";
 
-      filtered.forEach(item => {
-        const done = !!checkedItems[item];
-        const info = checkedItems[item];
-        const btn = document.createElement("button");
-        btn.className = "item-btn" + (done ? " checked" : "");
-        btn.setAttribute("data-item", item);
-        btn.innerHTML = done
-          ? `<span class="item-check">✅</span><span class="item-label">${item}</span><span class="item-by">${info?.by || ""}</span>`
-          : `<span class="item-check">◻</span><span class="item-label">${item}</span>`;
-        btn.onclick = () => {
-          toggleFirebase(item);
-          if (DEMO_MODE) {} // handled inside
-        };
-        grid.appendChild(btn);
+      filtered.forEach(it => {
+        const itemKey = it.display; // 表示名でチェック状態管理
+        const done = !!checkedItems[itemKey];
+        const info = checkedItems[itemKey];
+        const wrap = document.createElement("div");
+        wrap.className = "item-wrap";
+
+        if (editMode) {
+          wrap.innerHTML = `
+            <button class="item-btn${done?' checked':''}" data-item="${itemKey}">
+              <span class="item-check">${done?'✅':'◻'}</span>
+              <span class="item-label">${it.display}</span>
+              ${done?`<span class="item-by">${info?.by||''}</span>`:''}
+            </button>
+            <div class="item-edit-btns">
+              <button class="iedit-btn rename-btn" title="名前変更" data-orig="${it.orig}" data-display="${it.display}" data-cat="${cat.name}" data-custom="${cat.isCustom}">✏️</button>
+              <button class="iedit-btn delete-btn" title="削除" data-orig="${it.orig}" data-display="${it.display}" data-cat="${cat.name}" data-custom="${cat.isCustom}">🗑</button>
+            </div>`;
+        } else {
+          wrap.innerHTML = `
+            <button class="item-btn${done?' checked':''}" data-item="${itemKey}">
+              <span class="item-check">${done?'✅':'◻'}</span>
+              <span class="item-label">${it.display}</span>
+              ${done?`<span class="item-by">${info?.by||''}</span>`:''}
+            </button>`;
+        }
+
+        const btn = wrap.querySelector('.item-btn');
+        btn.onclick = () => { if (!editMode) toggleFirebase(itemKey); };
+
+        if (editMode) {
+          wrap.querySelector('.rename-btn').onclick = (e) => {
+            const { orig, display, cat: cn, custom } = e.currentTarget.dataset;
+            showRenameDialog(cn, orig, display, custom==='true');
+          };
+          wrap.querySelector('.delete-btn').onclick = (e) => {
+            const { orig, display, cat: cn, custom } = e.currentTarget.dataset;
+            if (confirm(`「${display}」を削除しますか？\nチェック状態も削除されます。`)) {
+              deleteItem(cn, orig, custom==='true');
+            }
+          };
+        }
+
+        grid.appendChild(wrap);
       });
 
       section.appendChild(grid);
       container.appendChild(section);
     });
+
+    // 編集モード時のイベント登録
+    if (editMode) {
+      document.querySelectorAll('.add-item-btn').forEach(btn => {
+        btn.onclick = (e) => showAddItemDialog(e.currentTarget.dataset.cat, e.currentTarget.dataset.custom==='true');
+      });
+      document.querySelectorAll('.del-cat-btn').forEach(btn => {
+        btn.onclick = (e) => {
+          const cn = e.currentTarget.dataset.cat;
+          if (confirm(`カテゴリ「${cn}」を削除しますか？\n中のアイテムとチェック状態もすべて削除されます。`)) {
+            deleteCategory(cn, true);
+            if (currentFilter===cn) currentFilter="all";
+            rebuildCategoryTabs();
+          }
+        };
+      });
+    }
   }
 
-  function buildCategoryTabs() {
+  // -------- ダイアログ --------
+  function showAddItemDialog(catName, isCustomCat) {
+    const name = prompt(`「${catName}」に追加するアイテム名を入力してください:`);
+    if (!name) return;
+    const r = addItem(catName, name);
+    if (r==="dup") alert(`「${name}」はすでに存在します。`);
+    else if (r==="empty") alert("アイテム名を入力してください。");
+  }
+
+  function showRenameDialog(catName, origName, displayName_, isCustomCat) {
+    const newName = prompt(`「${displayName_}」の新しい名前:`, displayName_);
+    if (!newName || newName===displayName_) return;
+    const r = renameItem(catName, origName, newName, isCustomCat);
+    if (r==="dup") alert(`「${newName}」はすでに存在します。`);
+    else if (r==="same") return;
+  }
+
+  function showAddCategoryDialog() {
+    const name = prompt("新しいカテゴリ名を入力してください\n（例: 🧬 新カテゴリ）:");
+    if (!name) return;
+    const r = addCategory(name);
+    if (r==="dup") alert(`「${name}」はすでに存在します。`);
+    else { rebuildCategoryTabs(); renderItems(); }
+  }
+
+  // -------- タブ --------
+  function rebuildCategoryTabs() {
     const tabs = document.getElementById("cat-tabs");
+    tabs.innerHTML = "";
     const allBtn = document.createElement("button");
-    allBtn.className = "tab-btn active";
+    allBtn.className = "tab-btn" + (currentFilter==="all"?" active":"");
     allBtn.textContent = "すべて";
-    allBtn.onclick = () => { currentFilter = "all"; setActiveTab(allBtn); renderItems(); };
+    allBtn.onclick = () => { currentFilter="all"; setActiveTab(allBtn); renderItems(); };
     tabs.appendChild(allBtn);
 
-    ALL_CATEGORIES.forEach(cat => {
+    getCategories().forEach(cat => {
       const btn = document.createElement("button");
-      btn.className = "tab-btn";
+      btn.className = "tab-btn" + (currentFilter===cat.name?" active":"") + (cat.isCustom?" custom-tab":"");
       btn.textContent = cat.name;
-      btn.onclick = () => { currentFilter = cat.name; setActiveTab(btn); renderItems(); };
+      btn.onclick = () => { currentFilter=cat.name; setActiveTab(btn); renderItems(); };
       tabs.appendChild(btn);
     });
+
+    if (editMode) {
+      const addBtn = document.createElement("button");
+      addBtn.className = "tab-btn add-cat-tab";
+      addBtn.textContent = "＋ カテゴリ追加";
+      addBtn.onclick = showAddCategoryDialog;
+      tabs.appendChild(addBtn);
+    }
   }
 
+  function buildCategoryTabs() { rebuildCategoryTabs(); }
+
   function setActiveTab(active) {
-    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
     active.classList.add("active");
+  }
+
+  // -------- 編集モード切替 --------
+  function toggleEditMode() {
+    editMode = !editMode;
+    const btn = document.getElementById("edit-mode-btn");
+    btn.textContent = editMode ? "✅ 編集モード終了" : "✏️ 編集モード";
+    btn.classList.toggle("active", editMode);
+    document.body.classList.toggle("edit-active", editMode);
+    rebuildCategoryTabs();
+    renderAll();
   }
 
   // ============ 起動 ============
   window.addEventListener("DOMContentLoaded", () => {
     buildCategoryTabs();
 
-    // プレイヤー名
     const nameEl = document.getElementById("player-name");
     nameEl.value = playerName;
     nameEl.addEventListener("change", () => {
@@ -351,13 +530,13 @@
       localStorage.setItem("mc_player", playerName);
     });
 
-    // 検索
     document.getElementById("search-input").addEventListener("input", e => {
       searchQuery = e.target.value;
       renderItems();
     });
 
-    // Firebase接続 or デモ
+    document.getElementById("edit-mode-btn").onclick = toggleEditMode;
+
     if (DEMO_MODE) {
       document.getElementById("status-badge").textContent = "⚠️ デモモード（Firebase未設定）";
       document.getElementById("status-badge").className = "status-badge demo";
@@ -608,6 +787,84 @@ body {
   font-size: 11px;
   padding: 1px 5px;
 }
+
+/* 編集モードボタン */
+.edit-mode-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.edit-mode-btn:hover { border-color: var(--yellow); color: var(--yellow); }
+.edit-mode-btn.active { background: #3d2a00; border-color: var(--yellow); color: var(--yellow); font-weight: 700; }
+
+/* カスタムバッジ */
+.custom-badge {
+  background: #1f3a4a;
+  border: 1px solid #2d6a8a;
+  border-radius: 4px;
+  color: #58b4d4;
+  font-size: 9px;
+  font-weight: 400;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+.custom-tab { border-color: #2d6a8a !important; color: #58b4d4 !important; }
+.custom-tab.active { background: #1a3040 !important; }
+
+/* 編集モードのカテゴリ操作ボタン */
+.edit-cat-btns { display: flex; gap: 5px; align-items: center; }
+.edit-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 3px 8px;
+  transition: all .12s;
+}
+.edit-btn:hover { border-color: var(--green); color: var(--green); }
+.edit-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+/* アイテム編集ラッパー */
+.item-wrap { position: relative; display: flex; flex-direction: column; }
+.item-edit-btns {
+  display: flex;
+  gap: 2px;
+  padding: 0 4px 4px;
+  justify-content: flex-end;
+}
+.iedit-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 5px;
+  transition: all .1s;
+}
+.iedit-btn.rename-btn:hover { background: #1f2d1f; border-color: var(--green); }
+.iedit-btn.delete-btn:hover { background: #2d1f1f; border-color: var(--red); }
+
+/* 編集アクティブ時のハイライト */
+body.edit-active .cat-section { border-color: #3d3000; }
+body.edit-active .cat-header { background: #1e1a00; }
+
+/* カテゴリ追加タブ */
+.add-cat-tab {
+  border-style: dashed !important;
+  border-color: #3d3000 !important;
+  color: var(--yellow) !important;
+}
+.add-cat-tab:hover { background: #2d1f00 !important; border-color: var(--yellow) !important; }
 </style>
 </head>
 <body>
@@ -618,6 +875,7 @@ body {
   <div class="header-right">
     <span style="font-size:12px;color:var(--text-dim)">👤</span>
     <input id="player-name" class="player-input" placeholder="プレイヤー名を入力" maxlength="20">
+    <button id="edit-mode-btn" class="edit-mode-btn">✏️ 編集モード</button>
     <span id="status-badge" class="status-badge demo">読込中...</span>
   </div>
 </header>
