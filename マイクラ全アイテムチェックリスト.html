@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⛏️ マイクラ統合版 全アイテム収集チェックリスト</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ============================================================
+  // 🔥 ここにFirebaseの設定を貼り付けてください
+  // ============================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyD4Qir67i_brx25PqyB6Wb1A20g4MwSqio",
+    authDomain: "minecraft-checklist-de6f3.firebaseapp.com",
+    databaseURL: "https://minecraft-checklist-de6f3-default-rtdb.firebaseio.com",
+    projectId: "minecraft-checklist-de6f3",
+    storageBucket: "minecraft-checklist-de6f3.firebasestorage.app",
+    messagingSenderId: "171019309332",
+    appId: "1:171019309332:web:4c9567855f40d70cafb201"
+  };
+  // ============================================================
+
+  const DEMO_MODE = firebaseConfig.apiKey === "YOUR_API_KEY";
+
+  let db = null;
+  let checkedItems = {};
+  let playerName = localStorage.getItem("mc_player") || "";
+
+  if (!DEMO_MODE) {
+    const app = initializeApp(firebaseConfig);
+    db = getDatabase(app);
+  }
+
+  // ============ アイテムデータ ============
+  const ALL_CATEGORIES = [
+    { name: "🪵 木材系", items: [
+      "オークの原木","オークの木","樹皮を剥いだオークの原木","樹皮を剥いだオークの木","オークの板材","オークの階段","オークのハーフブロック","オークのフェンス","オークのフェンスゲート","オークのドア","オークのトラップドア","オークの感圧板","オークのボタン","オークの葉","オークの苗木","オークの船",
+      "トウヒの原木","トウヒの木","樹皮を剥いだトウヒの原木","樹皮を剥いだトウヒの木","トウヒの板材","トウヒの階段","トウヒのハーフブロック","トウヒのフェンス","トウヒのフェンスゲート","トウヒのドア","トウヒのトラップドア","トウヒの感圧板","トウヒのボタン","トウヒの葉","トウヒの苗木","トウヒの船",
+      "シラカバの原木","シラカバの木","樹皮を剥いだシラカバの原木","樹皮を剥いだシラカバの木","シラカバの板材","シラカバの階段","シラカバのハーフブロック","シラカバのフェンス","シラカバのフェンスゲート","シラカバのドア","シラカバのトラップドア","シラカバの感圧板","シラカバのボタン","シラカバの葉","シラカバの苗木","シラカバの船",
+      "ジャングルの原木","ジャングルの木","樹皮を剥いだジャングルの原木","樹皮を剥いだジャングルの木","ジャングルの板材","ジャングルの階段","ジャングルのハーフブロック","ジャングルのフェンス","ジャングルのフェンスゲート","ジャングルのドア","ジャングルのトラップドア","ジャングルの感圧板","ジャングルのボタン","ジャングルの葉","ジャングルの苗木","ジャングルの船",
+      "アカシアの原木","アカシアの木","樹皮を剥いだアカシアの原木","樹皮を剥いだアカシアの木","アカシアの板材","アカシアの階段","アカシアのハーフブロック","アカシアのフェンス","アカシアのフェンスゲート","アカシアのドア","アカシアのトラップドア","アカシアの感圧板","アカシアのボタン","アカシアの葉","アカシアの苗木","アカシアの船",
+      "ダークオークの原木","ダークオークの木","樹皮を剥いだダークオークの原木","樹皮を剥いだダークオークの木","ダークオークの板材","ダークオークの階段","ダークオークのハーフブロック","ダークオークのフェンス","ダークオークのフェンスゲート","ダークオークのドア","ダークオークのトラップドア","ダークオークの感圧板","ダークオークのボタン","ダークオークの葉","ダークオークの苗木","ダークオークの船",
+      "マングローブの原木","マングローブの木","樹皮を剥いだマングローブの原木","樹皮を剥いだマングローブの木","マングローブの板材","マングローブの階段","マングローブのハーフブロック","マングローブのフェンス","マングローブのフェンスゲート","マングローブのドア","マングローブのトラップドア","マングローブの感圧板","マングローブのボタン","マングローブの葉","マングローブの苗木","マングローブの根","泥だらけのマングローブの根","マングローブの船",
+      "サクラの原木","サクラの木","樹皮を剥いだサクラの原木","樹皮を剥いだサクラの木","サクラの板材","サクラの階段","サクラのハーフブロック","サクラのフェンス","サクラのフェンスゲート","サクラのドア","サクラのトラップドア","サクラの感圧板","サクラのボタン","サクラの葉","サクラの苗木","サクラの船",
+      "ペールオークの原木","ペールオークの木","樹皮を剥いだペールオークの原木","樹皮を剥いだペールオークの木","ペールオークの板材","ペールオークの階段","ペールオークのハーフブロック","ペールオークのフェンス","ペールオークのフェンスゲート","ペールオークのドア","ペールオークのトラップドア","ペールオークの感圧板","ペールオークのボタン","ペールオークの葉","ペールオークの苗木","ペールオークの船",
+      "竹ブロック","表皮を剥いだ竹ブロック","竹の板材","竹細工","竹の階段","竹細工の階段","竹のハーフブロック","竹細工のハーフブロック","竹のフェンス","竹のフェンスゲート","竹のドア","竹のトラップドア","竹の感圧板","竹のボタン","竹のいかだ",
+      "真紅の幹","真紅の菌糸","表皮を剥いだ真紅の幹","表皮を剥いだ真紅の菌糸","真紅の板材","真紅の階段","真紅のハーフブロック","真紅のフェンス","真紅のフェンスゲート","真紅のドア","真紅のトラップドア","真紅の感圧板","真紅のボタン",
+      "歪んだ幹","歪んだ菌糸","表皮を剥いだ歪んだ幹","表皮を剥いだ歪んだ菌糸","歪んだ板材","歪んだ階段","歪んだハーフブロック","歪んだフェンス","歪んだフェンスゲート","歪んだドア","歪んだトラップドア","歪んだ感圧板","歪んだボタン",
+    ]},
+    { name: "🪨 石材・建材系", items: [
+      "石","石の階段","石のハーフブロック","石の感圧板","石のボタン",
+      "丸石","丸石の階段","丸石のハーフブロック","丸石の塀","苔むした丸石","苔むした丸石の階段","苔むした丸石のハーフブロック","苔むした丸石の塀",
+      "滑らかな石","滑らかな石のハーフブロック",
+      "石レンガ","ひび割れた石レンガ","石レンガの階段","石レンガのハーフブロック","石レンガの塀","模様入りの石レンガ","苔むした石レンガ","苔むした石レンガの階段","苔むした石レンガのハーフブロック","苔むした石レンガの塀",
+      "花崗岩","花崗岩の階段","花崗岩のハーフブロック","花崗岩の塀","磨かれた花崗岩","磨かれた花崗岩の階段","磨かれた花崗岩のハーフブロック",
+      "閃緑岩","閃緑岩の階段","閃緑岩のハーフブロック","閃緑岩の塀","磨かれた閃緑岩","磨かれた閃緑岩の階段","磨かれた閃緑岩のハーフブロック",
+      "安山岩","安山岩の階段","安山岩のハーフブロック","安山岩の塀","磨かれた安山岩","磨かれた安山岩の階段","磨かれた安山岩のハーフブロック",
+      "深層岩","深層岩の丸石","深層岩の丸石の階段","深層岩の丸石のハーフブロック","深層岩の丸石の塀","模様入りの深層岩","磨かれた深層岩","磨かれた深層岩の階段","磨かれた深層岩のハーフブロック","磨かれた深層岩の塀",
+      "深層岩レンガ","ひび割れた深層岩レンガ","深層岩レンガの階段","深層岩レンガのハーフブロック","深層岩レンガの塀","深層岩タイル","ひび割れた深層岩タイル","深層岩タイルの階段","深層岩タイルのハーフブロック","深層岩タイルの塀","強化された深層岩",
+      "凝灰岩","凝灰岩の階段","凝灰岩のハーフブロック","凝灰岩の塀","模様入りの凝灰岩","磨かれた凝灰岩","磨かれた凝灰岩の階段","磨かれた凝灰岩のハーフブロック","磨かれた凝灰岩の塀","凝灰岩レンガ","凝灰岩レンガの階段","凝灰岩レンガのハーフブロック","凝灰岩レンガの塀","模様入りの凝灰岩レンガ",
+      "レンガ","レンガの階段","レンガのハーフブロック","レンガの塀",
+      "固めた泥","泥レンガ","泥レンガの階段","泥レンガのハーフブロック","泥レンガの塀",
+      "樹脂レンガ","樹脂レンガの階段","樹脂レンガのハーフブロック","樹脂レンガの塀","模様入りの樹脂レンガ",
+      "砂岩","砂岩の階段","砂岩のハーフブロック","砂岩の塀","模様入りの砂岩","滑らかな砂岩","滑らかな砂岩の階段","滑らかな砂岩のハーフブロック","研がれた砂岩","研がれた砂岩のハーフブロック",
+      "赤い砂岩","赤い砂岩の階段","赤い砂岩のハーフブロック","赤い砂岩の塀","模様入りの赤い砂岩","滑らかな赤い砂岩","滑らかな赤い砂岩の階段","滑らかな赤い砂岩のハーフブロック","研がれた赤い砂岩","研がれた赤い砂岩のハーフブロック",
+      "シーランタン","プリズマリン","プリズマリンの階段","プリズマリンのハーフブロック","プリズマリンの塀","プリズマリンレンガ","プリズマリンレンガの階段","プリズマリンレンガのハーフブロック","ダークプリズマリン","ダークプリズマリンの階段","ダークプリズマリンのハーフブロック",
+      "ネザーラック","ネザーレンガ","ひび割れたネザーレンガ","ネザーレンガの階段","ネザーレンガのハーフブロック","ネザーレンガの塀","ネザーレンガのフェンス","模様入りのネザーレンガ","赤いネザーレンガ","赤いネザーレンガの階段","赤いネザーレンガのハーフブロック","赤いネザーレンガの塀",
+      "玄武岩","滑らかな玄武岩","磨かれた玄武岩","マグマブロック",
+      "ブラックストーン","きらめくブラックストーン","ブラックストーンの階段","ブラックストーンのハーフブロック","ブラックストーンの塀","模様入りの磨かれたブラックストーン","磨かれたブラックストーン","磨かれたブラックストーンの階段","磨かれたブラックストーンのハーフブロック","磨かれたブラックストーンの塀","磨かれたブラックストーンの感圧板","磨かれたブラックストーンのボタン","磨かれたブラックストーンレンガ","ひび割れた磨かれたブラックストーンレンガ","磨かれたブラックストーンレンガの階段","磨かれたブラックストーンレンガのハーフブロック","磨かれたブラックストーンレンガの塀",
+      "エンドストーン","エンドストーンレンガ","エンドストーンレンガの階段","エンドストーンレンガのハーフブロック","エンドストーンレンガの塀",
+      "プルプァブロック","プルプァの柱","プルプァの階段","プルプァのハーフブロック",
+      "クォーツブロック","クォーツの階段","クォーツのハーフブロック","模様入りのクォーツブロック","クォーツレンガ","クォーツの柱","滑らかなクォーツブロック","滑らかなクォーツの階段","滑らかなクォーツのハーフブロック",
+    ]},
+    { name: "🔩 金属・銅ブロック系", items: [
+      "鉄ブロック","鉄格子","鉄のドア","鉄のトラップドア","重量用感圧板","鎖",
+      "金ブロック","軽量用感圧板",
+      "ダイヤモンドブロック","エメラルドブロック","ラピスラズリブロック","レッドストーンブロック","石炭ブロック","ネザライトブロック","アメジストブロック",
+      "銅ブロック","模様入りの銅","銅の格子","切り込み入りの銅","切り込み入りの銅の階段","切り込み入りの銅のハーフブロック","銅のドア","銅のトラップドア","銅の電球",
+      "風化した銅","風化した模様入りの銅","風化した銅の格子","風化した切り込み入りの銅","風化した切り込み入りの銅の階段","風化した切り込み入りの銅のハーフブロック","風化した銅のドア","風化した銅のトラップドア","風化した銅の電球",
+      "錆びた銅","錆びた模様入りの銅","錆びた銅の格子","錆びた切り込み入りの銅","錆びた切り込み入りの銅の階段","錆びた切り込み入りの銅のハーフブロック","錆びた銅のドア","錆びた銅のトラップドア","錆びた銅の電球",
+      "酸化した銅","酸化した模様入りの銅","酸化した銅の格子","酸化した切り込み入りの銅","酸化した切り込み入りの銅の階段","酸化した切り込み入りの銅のハーフブロック","酸化した銅のドア","酸化した銅のトラップドア","酸化した銅の電球",
+      "錆止めされた銅ブロック","錆止めされた模様入りの銅","錆止めされた銅の格子","錆止めされた切り込み入りの銅","錆止めされた切り込み入りの銅の階段","錆止めされた切り込み入りの銅のハーフブロック","錆止めされた銅のドア","錆止めされた銅のトラップドア","錆止めされた銅の電球",
+      "錆止めされた風化した銅","錆止めされた風化した模様入りの銅","錆止めされた風化した銅の格子","錆止めされた風化した切り込み入りの銅","錆止めされた風化した切り込み入りの銅の階段","錆止めされた風化した切り込み入りの銅のハーフブロック","錆止めされた風化した銅のドア","錆止めされた風化した銅のトラップドア","錆止めされた風化した銅の電球",
+      "錆止めされた錆びた銅","錆止めされた錆びた模様入りの銅","錆止めされた錆びた銅の格子","錆止めされた錆びた切り込み入りの銅","錆止めされた錆びた切り込み入りの銅の階段","錆止めされた錆びた切り込み入りの銅のハーフブロック","錆止めされた錆びた銅のドア","錆止めされた錆びた銅のトラップドア","錆止めされた錆びた銅の電球",
+      "錆止めされた酸化した銅","錆止めされた酸化した模様入りの銅","錆止めされた酸化した銅の格子","錆止めされた酸化した切り込み入りの銅","錆止めされた酸化した切り込み入りの銅の階段","錆止めされた酸化した切り込み入りの銅のハーフブロック","錆止めされた酸化した銅のドア","錆止めされた酸化した銅のトラップドア","錆止めされた酸化した銅の電球",
+    ]},
+    { name: "🎨 カラーブロック・染料系", items: [
+      "白色の羊毛","薄灰色の羊毛","灰色の羊毛","黒色の羊毛","茶色の羊毛","赤色の羊毛","橙色の羊毛","黄色の羊毛","黄緑色の羊毛","緑色の羊毛","青緑色の羊毛","空色の羊毛","青色の羊毛","紫色の羊毛","赤紫色の羊毛","桃色の羊毛",
+      "白色のカーペット","薄灰色のカーペット","灰色のカーペット","黒色のカーペット","茶色のカーペット","赤色のカーペット","橙色のカーペット","黄色のカーペット","黄緑色のカーペット","緑色のカーペット","青緑色のカーペット","空色のカーペット","青色のカーペット","紫色のカーペット","赤紫色のカーペット","桃色のカーペット",
+      "テラコッタ","白色のテラコッタ","薄灰色のテラコッタ","灰色のテラコッタ","黒色のテラコッタ","茶色のテラコッタ","赤色のテラコッタ","橙色のテラコッタ","黄色のテラコッタ","黄緑色のテラコッタ","緑色のテラコッタ","青緑色のテラコッタ","空色のテラコッタ","青色のテラコッタ","紫色のテラコッタ","赤紫色のテラコッタ","桃色のテラコッタ",
+      "白色の彩釉テラコッタ","薄灰色の彩釉テラコッタ","灰色の彩釉テラコッタ","黒色の彩釉テラコッタ","茶色の彩釉テラコッタ","赤色の彩釉テラコッタ","橙色の彩釉テラコッタ","黄色の彩釉テラコッタ","黄緑色の彩釉テラコッタ","緑色の彩釉テラコッタ","青緑色の彩釉テラコッタ","空色の彩釉テラコッタ","青色の彩釉テラコッタ","紫色の彩釉テラコッタ","赤紫色の彩釉テラコッタ","桃色の彩釉テラコッタ",
+      "白色のコンクリート","薄灰色のコンクリート","灰色のコンクリート","黒色のコンクリート","茶色のコンクリート","赤色のコンクリート","橙色のコンクリート","黄色のコンクリート","黄緑色のコンクリート","緑色のコンクリート","青緑色のコンクリート","空色のコンクリート","青色のコンクリート","紫色のコンクリート","赤紫色のコンクリート","桃色のコンクリート",
+      "白色のコンクリートパウダー","薄灰色のコンクリートパウダー","灰色のコンクリートパウダー","黒色のコンクリートパウダー","茶色のコンクリートパウダー","赤色のコンクリートパウダー","橙色のコンクリートパウダー","黄色のコンクリートパウダー","黄緑色のコンクリートパウダー","緑色のコンクリートパウダー","青緑色のコンクリートパウダー","空色のコンクリートパウダー","青色のコンクリートパウダー","紫色のコンクリートパウダー","赤紫色のコンクリートパウダー","桃色のコンクリートパウダー",
+      "ガラス","遮光ガラス","白色の色付きガラス","薄灰色の色付きガラス","灰色の色付きガラス","黒色の色付きガラス","茶色の色付きガラス","赤色の色付きガラス","橙色の色付きガラス","黄色の色付きガラス","黄緑色の色付きガラス","緑色の色付きガラス","青緑色の色付きガラス","空色の色付きガラス","青色の色付きガラス","紫色の色付きガラス","赤紫色の色付きガラス","桃色の色付きガラス",
+      "ガラス板","白色の色付きガラス板","薄灰色の色付きガラス板","灰色の色付きガラス板","黒色の色付きガラス板","茶色の色付きガラス板","赤色の色付きガラス板","橙色の色付きガラス板","黄色の色付きガラス板","黄緑色の色付きガラス板","緑色の色付きガラス板","青緑色の色付きガラス板","空色の色付きガラス板","青色の色付きガラス板","紫色の色付きガラス板","赤紫色の色付きガラス板","桃色の色付きガラス板",
+      "白色の染料","薄灰色の染料","灰色の染料","黒色の染料","茶色の染料","赤色の染料","橙色の染料","黄色の染料","黄緑色の染料","緑色の染料","青緑色の染料","空色の染料","青色の染料","紫色の染料","赤紫色の染料","桃色の染料",
+      "ろうそく","白色のろうそく","薄灰色のろうそく","灰色のろうそく","黒色のろうそく","茶色のろうそく","赤色のろうそく","橙色のろうそく","黄色のろうそく","黄緑色のろうそく","緑色のろうそく","青緑色のろうそく","空色のろうそく","青色のろうそく","紫色のろうそく","赤紫色のろうそく","桃色のろうそく",
+      "シュルカーボックス","白色のシュルカーボックス","薄灰色のシュルカーボックス","灰色のシュルカーボックス","黒色のシュルカーボックス","茶色のシュルカーボックス","赤色のシュルカーボックス","橙色のシュルカーボックス","黄色のシュルカーボックス","黄緑色のシュルカーボックス","緑色のシュルカーボックス","青緑色のシュルカーボックス","空色のシュルカーボックス","青色のシュルカーボックス","紫色のシュルカーボックス","赤紫色のシュルカーボックス","桃色のシュルカーボックス",
+    ]},
+    { name: "🌿 自然・植物・農業系", items: [
+      "土","草ブロック","菌糸ブロック","ポドゾル","粗い土","根付いた土","泥","砂","赤い砂","砂利","粘土","雪ブロック","雪","氷","氷塊","青氷","スポンジ","濡れたスポンジ",
+      "草","背の高い草","シダ","背の高いシダ","タンポポ","ポピー","青いオーキッド","ヒナソウ","アリウム","橙色のチューリップ","赤色のチューリップ","白色のチューリップ","桃色のチューリップ","ひまわり","ライラック","ボタン","バラ","オレンジのバラ","コルニーポピー","ペールフラワー","スノードロップ","クローバー","オープンアイリス","閉じたアイリス",
+      "サトウキビ","竹","サボテン","スイートベリー","ケルプ","乾燥したコンブ","スイレン","スポアの花","ビッグドリップリーフ","スモールドリップリーフ","ツタ","ネザーのツタ","グロウベリー","洞窟のツタ",
+      "赤いきのこ","茶色のきのこ","赤いきのこブロック","茶色のきのこブロック","きのこの茎","真紅の菌","歪んだ菌","真紅の根","歪んだ根","ネザースプラウト",
+      "オークの葉","トウヒの葉","シラカバの葉","ジャングルの葉","アカシアの葉","ダークオークの葉","マングローブの葉","サクラの葉","ペールオークの葉","マングローブの根","泥だらけのマングローブの根",
+      "カボチャ","彫られたカボチャ","カボチャのランタン","スイカのブロック",
+      "コーラスフラワー","コーラスフルーツ","コーラスプラント",
+      "苔ブロック","苔のカーペット","点滴石","鍾乳石ブロック","粉雪",
+      "方解石","フロッグライト（黄）","フロッグライト（緑）","フロッグライト（紫）","アメジストブロック","アメジストクラスター","アメジストの芽",
+    ]},
+    { name: "⚡ 照明・レッドストーン系", items: [
+      "松明","ソウルたいまつ","提灯","ソウルランタン","カボチャのランタン","シーランタン","グロウストーン","レッドストーンのランプ","エンドロッド","炎のチャージ",
+      "レッドストーン","レッドストーンブロック","レッドストーンのたいまつ","レッドストーンのリピーター","レッドストーンのコンパレーター",
+      "ピストン","粘着ピストン","ディスペンサー","ドロッパー","ホッパー","オブザーバー",
+      "レバー","石のボタン","石の感圧板","重量用感圧板","軽量用感圧板","トリップワイヤーフック",
+      "TNT","音符ブロック","ターゲットブロック","鐘","砥石","発射装置",
+      "レール","加速レール","感知レール","アクティベーターレール",
+    ]},
+    { name: "🔨 作業設備・チェスト系", items: [
+      "作業台","かまど","溶鉱炉","スモーカー","石切台","彫刻台","鍛冶台","織機",
+      "チェスト","トラップチェスト","樽","コンポスター","ビーコン","醸造台",
+      "エンチャントテーブル","アンビル","少し傷ついたアンビル","ひどく傷ついたアンビル",
+      "書見台","旗竿","ジュークボックス","燻製器","焚き火","ソウルの焚き火","アーマースタンド",
+    ]},
+    { name: "🍖 食料・飲料系", items: [
+      "生の豚肉","調理した豚肉","生の牛肉","調理した牛肉","生のチキン","調理したチキン","生の羊肉","調理した羊肉","生のウサギ","調理したウサギ",
+      "生のコッド","調理したコッド","生のサーモン","調理したサーモン","フグ","熱帯魚",
+      "リンゴ","金のリンゴ","エンチャントされた金のリンゴ","パン","クッキー","ケーキ","パンプキンパイ",
+      "ニンジン","金のニンジン","焼きジャガイモ","毒のジャガイモ","ビート根","スイカのスライス","乾燥した昆布","甘い実","グロウベリー",
+      "ムーシュルームのシチュー","ビート根のスープ","ウサギのシチュー",
+      "牛乳入りバケツ","ハチミツ入りボトル",
+    ]},
+    { name: "🧪 ポーション・矢系", items: [
+      "奇妙なポーション","夜目のポーション","跳躍力強化のポーション","跳躍力強化のポーションII","火炎耐性のポーション","速度のポーション","速度のポーションII","遅延のポーション","遅延のポーションII","水中呼吸のポーション","即時治癒のポーション","即時治癒のポーションII","即時ダメージのポーション","即時ダメージのポーションII","毒のポーション","毒のポーションII","再生のポーション","再生のポーションII","力強さのポーション","力強さのポーションII","透明化のポーション","カメの主人のポーション","スローフォールのポーション","耐性のポーション","不吉な瓶",
+      "スプラッシュ・夜目","スプラッシュ・跳躍力強化","スプラッシュ・火炎耐性","スプラッシュ・速度","スプラッシュ・遅延","スプラッシュ・水中呼吸","スプラッシュ・即時治癒","スプラッシュ・即時ダメージ","スプラッシュ・毒","スプラッシュ・再生","スプラッシュ・力強さ","スプラッシュ・透明化","スプラッシュ・カメの主人","スプラッシュ・スローフォール","スプラッシュ・耐性",
+      "残留・夜目","残留・跳躍力強化","残留・火炎耐性","残留・速度","残留・遅延","残留・水中呼吸","残留・即時治癒","残留・即時ダメージ","残留・毒","残留・再生","残留・力強さ","残留・透明化","残留・カメの主人","残留・スローフォール","残留・耐性",
+      "スペクトルアロー","ポーションの矢（夜目）","ポーションの矢（跳躍力強化）","ポーションの矢（火炎耐性）","ポーションの矢（速度）","ポーションの矢（遅延）","ポーションの矢（水中呼吸）","ポーションの矢（即時治癒）","ポーションの矢（即時ダメージ）","ポーションの矢（毒）","ポーションの矢（再生）","ポーションの矢（力強さ）","ポーションの矢（透明化）","ポーションの矢（カメの主人）","ポーションの矢（スローフォール）","ポーションの矢（耐性）",
+    ]},
+    { name: "⚔️ 武器・防具・ツール系", items: [
+      "木の剣","石の剣","鉄の剣","金の剣","ダイヤモンドの剣","ネザライトの剣",
+      "木のツルハシ","石のツルハシ","鉄のツルハシ","金のツルハシ","ダイヤモンドのツルハシ","ネザライトのツルハシ",
+      "木のオノ","石のオノ","鉄のオノ","金のオノ","ダイヤモンドのオノ","ネザライトのオノ",
+      "木のシャベル","石のシャベル","鉄のシャベル","金のシャベル","ダイヤモンドのシャベル","ネザライトのシャベル",
+      "木のクワ","石のクワ","鉄のクワ","金のクワ","ダイヤモンドのクワ","ネザライトのクワ",
+      "弓","クロスボウ","矢","三叉槍","マース","盾",
+      "革の帽子","チェーンメイルのヘルメット","鉄のヘルメット","金のヘルメット","ダイヤモンドのヘルメット","ネザライトのヘルメット","タートルヘルメット",
+      "革のチェストプレート","チェーンメイルのチェストプレート","鉄のチェストプレート","金のチェストプレート","ダイヤモンドのチェストプレート","ネザライトのチェストプレート",
+      "革のレギンス","チェーンメイルのレギンス","鉄のレギンス","金のレギンス","ダイヤモンドのレギンス","ネザライトのレギンス",
+      "革のブーツ","チェーンメイルのブーツ","鉄のブーツ","金のブーツ","ダイヤモンドのブーツ","ネザライトのブーツ",
+      "釣り竿","フリント&スチール","ハサミ","望遠鏡","ブラシ","コンパス","ロードストーンコンパス","時計","地図","空の地図",
+      "バケツ","水入りバケツ","溶岩入りバケツ","コッドの入ったバケツ","サーモンの入ったバケツ","熱帯魚の入ったバケツ","フグの入ったバケツ","オタマジャクシの入ったバケツ","アクシオロトルの入ったバケツ",
+    ]},
+    { name: "🧱 素材・クラフト材料系", items: [
+      "木の棒","糸","羽根","火打石","紙","本","革","レンガ（素材）","粘土の塊","雪玉",
+      "鉄インゴット","金インゴット","銅インゴット","ネザライトインゴット","ネザライトのくず","金塊",
+      "ダイヤモンド","エメラルド","ラピスラズリ","アメジストの欠片","石炭","木炭",
+      "骨","骨粉","火薬","スライムボール","発光するインクサック","イカスミ",
+      "ウサギの皮","ウサギの足","ブレイズロッド","ブレイズパウダー","マグマクリーム",
+      "ガスターの涙","クモの目","発酵したクモの目","エンダーパール","エンダーアイ",
+      "シュルカーの殻","プリズマリンの欠片","プリズマリンのクリスタル","海の心臓","樹脂のかたまり",
+      "小麦の種","カボチャの種","スイカの種","ビートの種","小麦","砂糖","ハチミツ","蜜蝋",
+      "鞍","ネームタグ","リード","エリトラ","ネザースター","スニファーの卵","カメの卵","ドラゴンの卵",
+      "精製したコーラスフルーツ","本と羽根ペン","エンチャントした本","経験値ボトル",
+      "絵画","額縁","光る額縁",
+      "陶器のかけら（アーチャー）","陶器のかけら（農夫）","陶器のかけら（剣）","陶器のかけら（斧）","陶器のかけら（旅人）","陶器のかけら（ブタ）","陶器のかけら（日の出）","陶器のかけら（スカル）","陶器のかけら（ダイヤモンド）","陶器のかけら（エメラルド）","陶器のかけら（ハート）","陶器のかけら（ネザーレンガ）","装飾付きの壺",
+    ]},
+    { name: "💀 特殊・希少アイテム系", items: [
+      "スケルトンのスカル","ウィザースケルトンのスカル","ゾンビの頭","クリーパーの頭","ドラゴンの頭","ピグリンの頭","プレイヤーの頭",
+      "白色のバナー","薄灰色のバナー","灰色のバナー","黒色のバナー","茶色のバナー","赤色のバナー","橙色のバナー","黄色のバナー","黄緑色のバナー","緑色のバナー","青緑色のバナー","空色のバナー","青色のバナー","紫色のバナー","赤紫色のバナー","桃色のバナー",
+      "バナーパターン（世界の縁）","バナーパターン（花）","バナーパターン（クリーパー）","バナーパターン（ドクロ）","バナーパターン（グローブ）","バナーパターン（嵐）","バナーパターン（風）",
+      "音楽ディスク「13」","音楽ディスク「cat」","音楽ディスク「blocks」","音楽ディスク「chirp」","音楽ディスク「far」","音楽ディスク「mall」","音楽ディスク「mellohi」","音楽ディスク「stal」","音楽ディスク「strad」","音楽ディスク「ward」","音楽ディスク「11」","音楽ディスク「wait」","音楽ディスク「otherside」","音楽ディスク「5」","音楽ディスク「Pigstep」","音楽ディスク「Relic」","音楽ディスク「Creator」","音楽ディスク「Creator Music Box」","音楽ディスク「Precipice」",
+      "トロッコ","チェスト付きトロッコ","かまど付きトロッコ","TNT付きトロッコ","ホッパー付きトロッコ",
+      "花火ロケット","花火の星",
+      "ハチの巣","ハチの巣箱","スライムブロック","粘液ブロック","ハニカムブロック","磁石ブロック","エコーシャード","試練のカギ","不吉な試練のカギ",
+    ]},
+    { name: "⛏️ 鉱石・地形ブロック系", items: [
+      "石炭鉱石","深層石炭鉱石","鉄鉱石","深層鉄鉱石","金鉱石","深層金鉱石",
+      "ダイヤモンド鉱石","深層ダイヤモンド鉱石","エメラルド鉱石","深層エメラルド鉱石",
+      "ラピスラズリ鉱石","深層ラピスラズリ鉱石","レッドストーン鉱石","深層レッドストーン鉱石",
+      "銅鉱石","深層銅鉱石","ネザー水晶鉱石","ネザー金鉱石","古代の残骸",
+      "黒曜石","泣く黒曜石",
+    ]},
+  ];
+
+  const TOTAL = ALL_CATEGORIES.reduce((s,c) => s + c.items.length, 0);
+
+  // ============ Firebase 操作 ============
+  function safeKey(name) {
+    return encodeURIComponent(name).replace(/%/g, '_');
+  }
+
+  function loadFromFirebase(callback) {
+    if (!db) { callback({}); return; }
+    const r = ref(db, "checklist");
+    get(r).then(snap => {
+      const data = snap.val() || {};
+      const result = {};
+      Object.keys(data).forEach(k => {
+        result[decodeURIComponent(k.replace(/_/g, '%'))] = data[k];
+      });
+      callback(result);
+    }).catch(() => callback({}));
+  }
+
+  function toggleFirebase(itemName) {
+    if (!db) {
+      // デモモード: ローカルのみ
+      checkedItems[itemName] = checkedItems[itemName]
+        ? null
+        : { by: playerName || "?", at: new Date().toLocaleTimeString("ja-JP", {hour:"2-digit",minute:"2-digit"}) };
+      if (!checkedItems[itemName]) delete checkedItems[itemName];
+      renderAll();
+      return;
+    }
+    const key = safeKey(itemName);
+    const r = ref(db, `checklist/${key}`);
+    get(r).then(snap => {
+      if (snap.val()) {
+        set(r, null);
+      } else {
+        set(r, {
+          by: playerName || "匿名",
+          at: new Date().toLocaleTimeString("ja-JP", {hour:"2-digit",minute:"2-digit"})
+        });
+      }
+    });
+  }
+
+  function subscribeFirebase() {
+    if (!db) return;
+    const r = ref(db, "checklist");
+    onValue(r, snap => {
+      const data = snap.val() || {};
+      checkedItems = {};
+      Object.keys(data).forEach(k => {
+        const decoded = decodeURIComponent(k.replace(/_/g, '%'));
+        checkedItems[decoded] = data[k];
+      });
+      renderAll();
+    });
+  }
+
+  // ============ UI ============
+  let currentFilter = "all";
+  let searchQuery = "";
+
+  function renderAll() {
+    renderProgress();
+    renderItems();
+  }
+
+  function renderProgress() {
+    const count = Object.keys(checkedItems).length;
+    const pct = Math.round((count / TOTAL) * 100);
+    document.getElementById("prog-count").textContent = count;
+    document.getElementById("prog-total").textContent = TOTAL;
+    document.getElementById("prog-pct").textContent = pct + "%";
+    document.getElementById("prog-bar-fill").style.width = pct + "%";
+  }
+
+  function renderItems() {
+    const container = document.getElementById("items-container");
+    container.innerHTML = "";
+    const q = searchQuery.toLowerCase();
+
+    ALL_CATEGORIES.forEach(cat => {
+      if (currentFilter !== "all" && currentFilter !== cat.name) return;
+
+      const filtered = cat.items.filter(item =>
+        !q || item.toLowerCase().includes(q)
+      );
+      if (filtered.length === 0) return;
+
+      const catChecked = filtered.filter(i => checkedItems[i]).length;
+      const catPct = Math.round((catChecked / filtered.length) * 100);
+
+      const section = document.createElement("section");
+      section.className = "cat-section";
+
+      const header = document.createElement("div");
+      header.className = "cat-header";
+      header.innerHTML = `
+        <span class="cat-name">${cat.name}</span>
+        <span class="cat-stat">${catChecked}/${filtered.length} <span class="cat-pct">${catPct}%</span></span>
+      `;
+      section.appendChild(header);
+
+      const grid = document.createElement("div");
+      grid.className = "item-grid";
+
+      filtered.forEach(item => {
+        const done = !!checkedItems[item];
+        const info = checkedItems[item];
+        const btn = document.createElement("button");
+        btn.className = "item-btn" + (done ? " checked" : "");
+        btn.setAttribute("data-item", item);
+        btn.innerHTML = done
+          ? `<span class="item-check">✅</span><span class="item-label">${item}</span><span class="item-by">${info?.by || ""}</span>`
+          : `<span class="item-check">◻</span><span class="item-label">${item}</span>`;
+        btn.onclick = () => {
+          toggleFirebase(item);
+          if (DEMO_MODE) {} // handled inside
+        };
+        grid.appendChild(btn);
+      });
+
+      section.appendChild(grid);
+      container.appendChild(section);
+    });
+  }
+
+  function buildCategoryTabs() {
+    const tabs = document.getElementById("cat-tabs");
+    const allBtn = document.createElement("button");
+    allBtn.className = "tab-btn active";
+    allBtn.textContent = "すべて";
+    allBtn.onclick = () => { currentFilter = "all"; setActiveTab(allBtn); renderItems(); };
+    tabs.appendChild(allBtn);
+
+    ALL_CATEGORIES.forEach(cat => {
+      const btn = document.createElement("button");
+      btn.className = "tab-btn";
+      btn.textContent = cat.name;
+      btn.onclick = () => { currentFilter = cat.name; setActiveTab(btn); renderItems(); };
+      tabs.appendChild(btn);
+    });
+  }
+
+  function setActiveTab(active) {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    active.classList.add("active");
+  }
+
+  // ============ 起動 ============
+  window.addEventListener("DOMContentLoaded", () => {
+    buildCategoryTabs();
+
+    // プレイヤー名
+    const nameEl = document.getElementById("player-name");
+    nameEl.value = playerName;
+    nameEl.addEventListener("change", () => {
+      playerName = nameEl.value.trim();
+      localStorage.setItem("mc_player", playerName);
+    });
+
+    // 検索
+    document.getElementById("search-input").addEventListener("input", e => {
+      searchQuery = e.target.value;
+      renderItems();
+    });
+
+    // Firebase接続 or デモ
+    if (DEMO_MODE) {
+      document.getElementById("status-badge").textContent = "⚠️ デモモード（Firebase未設定）";
+      document.getElementById("status-badge").className = "status-badge demo";
+      renderAll();
+    } else {
+      document.getElementById("status-badge").textContent = "🔥 Firebase接続中...";
+      subscribeFirebase();
+    }
+  });
+</script>
+
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --green: #3fb950;
+  --green-dim: #1a4d2a;
+  --green-bright: #56d364;
+  --text: #e6edf3;
+  --text-dim: #7d8590;
+  --text-muted: #484f58;
+  --yellow: #e3b341;
+  --red: #f85149;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  min-height: 100vh;
+  padding-bottom: 40px;
+}
+
+/* ヘッダー */
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.header-title {
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--green-bright);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.player-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 10px;
+  width: 130px;
+}
+.player-input:focus { outline: none; border-color: var(--green); }
+
+.status-badge {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.status-badge.live { background: #1a3d1a; color: var(--green-bright); border: 1px solid var(--green); }
+.status-badge.demo { background: #3d2a00; color: var(--yellow); border: 1px solid var(--yellow); }
+
+/* 進捗 */
+.progress-wrap {
+  padding: 10px 16px 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+.prog-nums { font-size: 13px; color: var(--text-dim); }
+.prog-nums b { color: var(--green-bright); font-size: 16px; }
+.prog-pct { font-family: 'Share Tech Mono', monospace; font-size: 15px; color: var(--green); font-weight: bold; }
+.progress-bar {
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--green-bright));
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+/* 検索 */
+.search-wrap {
+  padding: 10px 16px 0;
+  display: flex;
+  gap: 8px;
+}
+.search-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px 14px;
+}
+.search-input:focus { outline: none; border-color: var(--green); }
+.search-input::placeholder { color: var(--text-muted); }
+
+/* カテゴリタブ */
+.tabs-wrap {
+  padding: 8px 16px 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  display: flex;
+  gap: 6px;
+  scrollbar-width: none;
+}
+.tabs-wrap::-webkit-scrollbar { display: none; }
+.tab-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  white-space: nowrap;
+  transition: all .15s;
+}
+.tab-btn:hover { border-color: var(--green); color: var(--green); }
+.tab-btn.active { background: var(--green-dim); border-color: var(--green); color: var(--green-bright); font-weight: 700; }
+
+/* アイテム一覧 */
+#items-container { padding: 10px 12px; }
+
+.cat-section {
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.cat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: #1c2128;
+  border-bottom: 1px solid var(--border);
+}
+.cat-name { font-size: 13px; font-weight: 700; color: var(--green-bright); }
+.cat-stat { font-size: 12px; color: var(--text-dim); }
+.cat-pct { color: var(--green); font-weight: bold; }
+
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 3px;
+  padding: 6px;
+}
+
+.item-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #8b949e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  transition: all .12s;
+  line-height: 1.35;
+  position: relative;
+}
+.item-btn:hover {
+  background: var(--surface2);
+  border-color: var(--border);
+  color: var(--text);
+}
+.item-btn.checked {
+  background: #122118;
+  border-color: #2ea043;
+  color: #aff0b8;
+}
+.item-btn.checked:hover {
+  background: #1a3322;
+}
+.item-check { font-size: 13px; flex-shrink: 0; }
+.item-label { flex: 1; word-break: break-all; }
+.item-by {
+  font-size: 9px;
+  color: var(--yellow);
+  background: rgba(0,0,0,.4);
+  border-radius: 3px;
+  padding: 1px 4px;
+  flex-shrink: 0;
+  max-width: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Firebase未設定バナー */
+.setup-banner {
+  margin: 10px 16px;
+  padding: 12px 16px;
+  background: #2d1f00;
+  border: 1px solid var(--yellow);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #e3c77a;
+  line-height: 1.6;
+}
+.setup-banner b { color: var(--yellow); }
+.setup-banner code {
+  background: #1a1200;
+  border-radius: 3px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  padding: 1px 5px;
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <span style="font-size:22px">⛏️</span>
+  <span class="header-title">マイクラ統合版 全アイテム収集チェックリスト</span>
+  <div class="header-right">
+    <span style="font-size:12px;color:var(--text-dim)">👤</span>
+    <input id="player-name" class="player-input" placeholder="プレイヤー名を入力" maxlength="20">
+    <span id="status-badge" class="status-badge demo">読込中...</span>
+  </div>
+</header>
+
+<div class="progress-wrap">
+  <div class="progress-info">
+    <span class="prog-nums"><b id="prog-count">0</b> / <span id="prog-total">0</span> 収集済み</span>
+    <span class="prog-pct" id="prog-pct">0%</span>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="prog-bar-fill" style="width:0%"></div></div>
+</div>
+
+<div id="setup-banner-wrap"></div>
+
+<div class="search-wrap">
+  <input id="search-input" class="search-input" placeholder="🔍 アイテム名で検索...">
+</div>
+
+<div class="tabs-wrap" id="cat-tabs"></div>
+
+<div id="items-container"></div>
+
+<script type="module">
+  // デモモード時のバナー表示
+  window.addEventListener("DOMContentLoaded", () => {
+    setTimeout(() => {
+      const badge = document.getElementById("status-badge");
+      if (badge && badge.classList.contains("demo")) {
+        document.getElementById("setup-banner-wrap").innerHTML = `
+          <div class="setup-banner">
+            <b>⚙️ Firebase未設定 — デモモードで動作中</b><br>
+            フレンドとリアルタイム共有するには、下の手順でFirebaseを設定してください。<br>
+            このファイル内の <code>firebaseConfig</code> に取得した設定を貼り付けてサーバーにアップロードするだけです。
+          </div>`;
+      } else if (badge) {
+        badge.textContent = "🔥 Firebase接続済み・リアルタイム共有中";
+        badge.className = "status-badge live";
+      }
+    }, 1500);
+  });
+</script>
+
+</body>
+</html>
