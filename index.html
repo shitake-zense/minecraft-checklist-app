@@ -417,12 +417,21 @@ function isDeleted(orig) { return getDeletedSet().has(orig); }
 function getCategories() {
   const deleted = getDeletedSet();
   const renamed = getRenamedMap();
-  const result = ALL_CATEGORIES.map(c => ({
-    name: c.name, isCustom: false,
-    items: c.items.filter(i => !deleted.has(i)).map(i => ({ orig: i, display: renamed[i] || i }))
-  }));
+  const catRenamed = customData.cat_renamed || {};
+  const extraItems = customData.extra_items || {};
+  const result = ALL_CATEGORIES.map(c => {
+    const displayName = catRenamed[c.name] || c.name;
+    const extras = (extraItems[c.name] || []).map(i => ({ orig: i, display: i }));
+    return {
+      name: displayName, origName: c.name, isCustom: false,
+      items: [
+        ...c.items.filter(i => !deleted.has(i)).map(i => ({ orig: i, display: renamed[i] || i })),
+        ...extras
+      ]
+    };
+  });
   Object.entries(getCustomCats()).forEach(([name, items]) => {
-    result.push({ name, isCustom: true, items: (items||[]).map(i => ({ orig: i, display: i })) });
+    result.push({ name, origName: name, isCustom: true, items: (items||[]).map(i => ({ orig: i, display: i })) });
   });
   return result;
 }
@@ -452,23 +461,30 @@ function toggleItem(displayName) {
 }
 
 // ---- 編集操作 ----
-function doAddItem(catName, itemName) {
+function doAddItem(catName, itemName, isCustomCat) {
   itemName = itemName.trim();
   if (!itemName) return "empty";
   if (getAllDisplayNames().includes(itemName)) return "dup";
-  const cats = getCustomCats();
-  if (!cats[catName]) cats[catName] = [];
-  if (cats[catName].includes(itemName)) return "dup";
-  cats[catName].push(itemName);
-  customData.cats = cats;
+  if (isCustomCat) {
+    const cats = getCustomCats();
+    if (!cats[catName]) cats[catName] = [];
+    cats[catName].push(itemName);
+    customData.cats = cats;
+  } else {
+    if (!customData.extra_items) customData.extra_items = {};
+    if (!customData.extra_items[catName]) customData.extra_items[catName] = [];
+    customData.extra_items[catName].push(itemName);
+  }
   saveCustom(); return "ok";
 }
 
 function doRenameItem(catName, origName, newName, isCustomCat) {
   newName = newName.trim();
-  if (!newName || newName === origName) return "same";
-  // 重複チェック（自分以外）
-  const all = getAllDisplayNames().filter(n => n !== resolvedName(origName));
+  if (!newName) return "empty";
+  const currentDisplay = resolvedName(origName);
+  if (newName === currentDisplay) return "same";
+  // 重複チェック（自分の現在の表示名を除いた全アイテム名）
+  const all = getAllDisplayNames().filter(n => n !== currentDisplay);
   if (all.includes(newName)) return "dup";
 
   if (isCustomCat) {
@@ -479,7 +495,6 @@ function doRenameItem(catName, origName, newName, isCustomCat) {
     arr[idx] = newName;
     cats[catName] = arr;
     customData.cats = cats;
-    // チェック状態を移行
     if (db) get(ref(db,`checklist/${safeKey(origName)}`)).then(snap => {
       if (snap.val()) { set(ref(db,`checklist/${safeKey(newName)}`),snap.val()); set(ref(db,`checklist/${safeKey(origName)}`),null); }
     });
@@ -487,9 +502,13 @@ function doRenameItem(catName, origName, newName, isCustomCat) {
   } else {
     const rn = getRenamedMap();
     const oldDisplay = rn[origName] || origName;
-    rn[origName] = newName;
+    // 元の名前に戻す場合はrenamedから削除
+    if (newName === origName) {
+      delete rn[origName];
+    } else {
+      rn[origName] = newName;
+    }
     customData.renamed = rn;
-    // チェック状態を移行
     if (db) get(ref(db,`checklist/${safeKey(oldDisplay)}`)).then(snap => {
       if (snap.val()) { set(ref(db,`checklist/${safeKey(newName)}`),snap.val()); set(ref(db,`checklist/${safeKey(oldDisplay)}`),null); }
     });
@@ -520,6 +539,27 @@ function doAddCategory(catName) {
   const cats = getCustomCats();
   cats[catName] = [];
   customData.cats = cats;
+  saveCustom(); return "ok";
+}
+
+function doRenameCategory(catName, newName, isCustomCat) {
+  newName = newName.trim();
+  if (!newName || newName === catName) return "same";
+  const allCatNames = getCategories().map(c => c.name).filter(n => n !== catName);
+  if (allCatNames.includes(newName)) return "dup";
+
+  if (isCustomCat) {
+    // カスタムカテゴリの名前変更
+    const cats = getCustomCats();
+    const items = cats[catName] || [];
+    delete cats[catName];
+    cats[newName] = items;
+    customData.cats = cats;
+  } else {
+    // ビルトインカテゴリの名前変更
+    if (!customData.cat_renamed) customData.cat_renamed = {};
+    customData.cat_renamed[catName] = newName;
+  }
   saveCustom(); return "ok";
 }
 
@@ -616,17 +656,33 @@ function renderItems() {
       addBtn.className = "sm-btn";
       addBtn.textContent = "＋追加";
       addBtn.onclick = () => {
-        openModal(`「${cat.name}」にアイテムを追加`, "アイテム名を入力...", "", val => doAddItem(cat.name, val));
+        openModal(`「${cat.name}」にアイテムを追加`, "アイテム名を入力...", "", val => doAddItem(cat.origName, val, cat.isCustom));
       };
       actions.appendChild(addBtn);
+
+      // カテゴリ名変更ボタン（全カテゴリ共通）
+      const renCatBtn = document.createElement("button");
+      renCatBtn.className = "sm-btn";
+      renCatBtn.textContent = "✏️名前変更";
+      renCatBtn.onclick = () => {
+        openModal(`カテゴリ名を変更`, "新しいカテゴリ名...", cat.name, val => {
+          const r = doRenameCategory(cat.origName, val, cat.isCustom);
+          if (r === "ok") {
+            if (currentFilter === cat.name) currentFilter = val.trim();
+            rebuildTabs(); renderAll();
+          }
+          return r;
+        });
+      };
+      actions.appendChild(renCatBtn);
 
       if (cat.isCustom) {
         const delCatBtn = document.createElement("button");
         delCatBtn.className = "sm-btn danger";
-        delCatBtn.textContent = "🗑カテゴリ削除";
+        delCatBtn.textContent = "🗑削除";
         delCatBtn.onclick = () => {
           if (confirm(`「${cat.name}」を削除しますか？\n中のアイテムとチェック状態もすべて削除されます。`)) {
-            doDeleteCategory(cat.name);
+            doDeleteCategory(cat.origName);
             if (currentFilter === cat.name) currentFilter = "all";
             rebuildTabs(); renderAll();
           }
@@ -831,6 +887,22 @@ function subscribe() {
   });
   onValue(ref(db,"custom_data"), snap => {
     customData = snap.val()||{};
+    // 旧custom_itemsデータの自動移行（__deleted__/__renamed__形式）
+    if (!customData.migrated_legacy) {
+      get(ref(db,"custom_items")).then(legacySnap => {
+        const legacy = legacySnap.val();
+        if (legacy) {
+          if (legacy.__deleted__ && Array.isArray(legacy.__deleted__)) {
+            customData.deleted = [...new Set([...(customData.deleted||[]), ...legacy.__deleted__])];
+          }
+          if (legacy.__renamed__ && typeof legacy.__renamed__ === "object") {
+            customData.renamed = { ...legacy.__renamed__, ...(customData.renamed||{}) };
+          }
+          customData.migrated_legacy = true;
+          saveCustom();
+        }
+      });
+    }
     rebuildTabs();
     renderAll();
   });
