@@ -106,6 +106,40 @@ body { background: var(--bg); color: var(--text); font-family: 'Zen Kaku Gothic 
 .ie-btn:hover { background: var(--surface2); border-color: var(--border); }
 .ie-btn.del:hover { background: #2d1212; border-color: var(--red); }
 
+/* 複数選択 */
+.item-btn.selected { background: #1a2a40; border-color: var(--blue); color: #a8d8ff; }
+.item-btn.selected:hover { background: #1f3550; }
+
+/* フローティング選択バー */
+.select-bar {
+  position: fixed; bottom: 52px; left: 50%; transform: translateX(-50%);
+  background: #1c2d3d; border: 1px solid var(--blue); border-radius: 30px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.6);
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  z-index: 400; white-space: nowrap; max-width: calc(100vw - 32px);
+  transition: opacity .2s, transform .2s;
+}
+.select-bar.hidden { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(10px); }
+.select-count { font-size: 13px; color: var(--blue); font-weight: 700; }
+.select-divider { width: 1px; height: 20px; background: var(--border); }
+.sel-btn {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 20px;
+  color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 12px;
+  padding: 5px 12px; transition: all .15s; white-space: nowrap;
+}
+.sel-btn:hover { border-color: var(--blue); color: var(--blue); }
+.sel-btn.danger:hover { border-color: var(--red); color: var(--red); }
+.sel-btn.cancel:hover { border-color: var(--text-dim); color: var(--text); }
+
+/* 移動モーダル */
+.modal-select {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text); font-family: inherit; font-size: 14px; padding: 9px 12px; margin-bottom: 12px;
+  appearance: none; cursor: pointer;
+}
+.modal-select:focus { outline: none; border-color: var(--blue); }
+.modal-select option { background: var(--surface2); }
+
 /* モーダル */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 1000;
@@ -209,6 +243,28 @@ body { background: var(--bg); color: var(--text); font-family: 'Zen Kaku Gothic 
 </div>
 <div class="tabs-wrap" id="cat-tabs"></div>
 <div id="items-container"></div>
+
+<!-- 複数選択フローティングバー -->
+<div id="select-bar" class="select-bar hidden">
+  <span class="select-count" id="select-count">0個選択中</span>
+  <div class="select-divider"></div>
+  <button class="sel-btn" id="sel-move-btn">📦 移動</button>
+  <button class="sel-btn danger" id="sel-delete-btn">🗑 削除</button>
+  <button class="sel-btn cancel" id="sel-clear-btn">✕ 解除</button>
+</div>
+
+<!-- 移動先カテゴリ選択モーダル -->
+<div id="move-modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="move-modal-title">移動先カテゴリを選択</h3>
+    <select id="move-modal-select" class="modal-select"></select>
+    <div id="move-modal-err" class="modal-err"></div>
+    <div class="modal-btns">
+      <button class="modal-btn" id="move-modal-cancel">キャンセル</button>
+      <button class="modal-btn primary" id="move-modal-ok">移動する</button>
+    </div>
+  </div>
+</div>
 
 <!-- ランキングパネル（下部） -->
 <div id="ranking-panel" class="ranking-panel collapsed">
@@ -402,6 +458,8 @@ let editMode = false;
 let currentFilter = "all";
 let searchQuery = "";
 let rankingCatFilter = "__all__";
+// 複数選択 Map<displayName, {orig, display, fromCatOrig, fromCatName, isCustomCat}>
+let selectedItems = new Map();
 
 // ========== ユーティリティ ==========
 function safeKey(s) { return encodeURIComponent(s).replace(/%/g,'_'); }
@@ -575,6 +633,13 @@ function doDeleteCategory(catName) {
   saveCustom();
 }
 
+function doMoveItems(items, toCatOrig, toCatIsCustom) {
+  items.forEach(it => {
+    doDeleteItem(it.fromCatOrig, it.orig, it.display, it.isCustomCat);
+    doAddItem(toCatOrig, it.display, toCatIsCustom);
+  });
+}
+
 // ========== モーダル ==========
 let modalCallback = null;
 function openModal(title, placeholder, initialVal, cb) {
@@ -703,10 +768,20 @@ function renderItems() {
       const wrap = document.createElement("div");
       wrap.className = "item-wrap";
 
+      const isSel = selectedItems.has(it.display);
       const btn = document.createElement("button");
-      btn.className = "item-btn" + (done ? " checked" : "");
-      btn.innerHTML = `<span class="item-check">${done ? '✅' : '◻'}</span><span class="item-label">${it.display}</span>${done && info?.by ? `<span class="item-by">${info.by}</span>` : ''}`;
-      btn.onclick = () => { if (!editMode) toggleItem(it.display); };
+      btn.className = "item-btn" + (done ? " checked" : "") + (isSel ? " selected" : "");
+      if (editMode) {
+        btn.innerHTML = `<span class="item-check">${isSel ? "☑" : (done ? "✅" : "◻")}</span><span class="item-label">${it.display}</span>`;
+        btn.onclick = () => {
+          if (selectedItems.has(it.display)) selectedItems.delete(it.display);
+          else selectedItems.set(it.display, { orig: it.orig, display: it.display, fromCatOrig: cat.origName, fromCatName: cat.name, isCustomCat: cat.isCustom });
+          updateSelectBar(); renderItems();
+        };
+      } else {
+        btn.innerHTML = `<span class="item-check">${done ? "✅" : "◻"}</span><span class="item-label">${it.display}</span>${done && info?.by ? `<span class="item-by">${info.by}</span>` : ""}`;
+        btn.onclick = () => { toggleItem(it.display); };
+      }
       wrap.appendChild(btn);
 
       if (editMode) {
@@ -714,25 +789,27 @@ function renderItems() {
         row.className = "item-edit-row";
 
         const renBtn = document.createElement("button");
-        renBtn.className = "ie-btn";
-        renBtn.title = "名前変更";
-        renBtn.textContent = "✏️ 名前変更";
-        renBtn.onclick = () => {
-          openModal(`「${it.display}」の名前変更`, "新しい名前を入力...", it.display, val => doRenameItem(cat.name, it.orig, val, cat.isCustom));
+        renBtn.className = "ie-btn"; renBtn.title = "名前変更"; renBtn.textContent = "✏️";
+        renBtn.onclick = (e) => {
+          e.stopPropagation();
+          openModal(`「${it.display}」の名前変更`, "新しい名前...", it.display, val => doRenameItem(cat.origName, it.orig, val, cat.isCustom));
+        };
+
+        const moveBtn = document.createElement("button");
+        moveBtn.className = "ie-btn"; moveBtn.title = "移動"; moveBtn.textContent = "📦";
+        moveBtn.onclick = (e) => {
+          e.stopPropagation();
+          openMoveModal([{ orig: it.orig, display: it.display, fromCatOrig: cat.origName, fromCatName: cat.name, isCustomCat: cat.isCustom }]);
         };
 
         const delBtn = document.createElement("button");
-        delBtn.className = "ie-btn del";
-        delBtn.title = "削除";
-        delBtn.textContent = "🗑 削除";
-        delBtn.onclick = () => {
-          if (confirm(`「${it.display}」を削除しますか？`)) {
-            doDeleteItem(cat.name, it.orig, it.display, cat.isCustom);
-          }
+        delBtn.className = "ie-btn del"; delBtn.title = "削除"; delBtn.textContent = "🗑";
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (confirm(`「${it.display}」を削除しますか？`)) doDeleteItem(cat.origName, it.orig, it.display, cat.isCustom);
         };
 
-        row.appendChild(renBtn);
-        row.appendChild(delBtn);
+        row.appendChild(renBtn); row.appendChild(moveBtn); row.appendChild(delBtn);
         wrap.appendChild(row);
       }
       grid.appendChild(wrap);
@@ -748,6 +825,46 @@ function renderItems() {
     section.appendChild(grid);
     container.appendChild(section);
   });
+}
+
+// ========== 選択バー ==========
+function updateSelectBar() {
+  const bar = document.getElementById("select-bar");
+  if (!bar) return;
+  const cnt = document.getElementById("select-count");
+  if (selectedItems.size === 0) { bar.classList.add("hidden"); }
+  else { bar.classList.remove("hidden"); cnt.textContent = selectedItems.size + "個選択中"; }
+}
+
+function openMoveModal(items) {
+  const cats = getCategories();
+  const sel = document.getElementById("move-modal-select");
+  const overlay = document.getElementById("move-modal-overlay");
+  document.getElementById("move-modal-title").textContent =
+    items.length === 1 ? `「${items[0].display}」を移動` : `${items.length}個のアイテムを移動`;
+  sel.innerHTML = "";
+  cats.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = cat.origName + "||" + (cat.isCustom ? "1" : "0");
+    opt.textContent = cat.name;
+    sel.appendChild(opt);
+  });
+  document.getElementById("move-modal-err").textContent = "";
+  overlay.classList.remove("hidden");
+
+  document.getElementById("move-modal-ok").onclick = () => {
+    const [toCatOrig, isCustomStr] = sel.value.split("||");
+    const toCatIsCustom = isCustomStr === "1";
+    if (items.every(it => it.fromCatOrig === toCatOrig)) {
+      document.getElementById("move-modal-err").textContent = "移動先が現在のカテゴリと同じです";
+      return;
+    }
+    doMoveItems(items, toCatOrig, toCatIsCustom);
+    selectedItems.clear(); updateSelectBar();
+    overlay.classList.add("hidden");
+  };
+  document.getElementById("move-modal-cancel").onclick = () => overlay.classList.add("hidden");
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add("hidden"); };
 }
 
 // ========== タブ ==========
@@ -921,10 +1038,28 @@ window.addEventListener("DOMContentLoaded", () => {
   // 編集モード
   document.getElementById("edit-mode-btn").onclick = () => {
     editMode = !editMode;
+    if (!editMode) { selectedItems.clear(); updateSelectBar(); }
     const btn = document.getElementById("edit-mode-btn");
     btn.textContent = editMode ? "✅ 編集終了" : "✏️ 編集";
     btn.classList.toggle("edit-active", editMode);
     rebuildTabs(); renderAll();
+  };
+
+  // 選択バーボタン
+  document.getElementById("sel-delete-btn").onclick = () => {
+    if (!selectedItems.size) return;
+    const names = [...selectedItems.values()].map(it => it.display);
+    if (confirm(selectedItems.size + "個のアイテムを削除しますか？\n" + names.slice(0,5).join("、") + (names.length > 5 ? "…" : ""))) {
+      [...selectedItems.values()].forEach(it => doDeleteItem(it.fromCatOrig, it.orig, it.display, it.isCustomCat));
+      selectedItems.clear(); updateSelectBar();
+    }
+  };
+  document.getElementById("sel-move-btn").onclick = () => {
+    if (!selectedItems.size) return;
+    openMoveModal([...selectedItems.values()]);
+  };
+  document.getElementById("sel-clear-btn").onclick = () => {
+    selectedItems.clear(); updateSelectBar(); renderItems();
   };
 
   // ランキング開閉
