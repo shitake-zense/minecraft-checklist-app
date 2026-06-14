@@ -3,6 +3,13 @@
 Minecraft 統合版（Bedrock）の全アイテム収集を、**ルームを作って身内みんなで一緒にチェック**できる Web アプリです。
 HTML 1枚（`index.html`）+ Firebase Realtime Database のみで動作します。
 
+## 🌐 公開URL（ここから使えます）
+
+**👉 https://shitake-zense.github.io/minecraft-checklist-app/**
+
+スマホ・PCのブラウザで上記を開けばすぐ遊べます。インストール不要。
+ルームを作って「🔗 招待」リンクを共有すれば、一緒に遊ぶ人もそのまま参加できます。
+
 ## ✨ 主な機能
 
 - **ルーム制** — 6桁コードのルームを作成 / コードで参加。ルームごとにチェックリストが独立
@@ -67,6 +74,14 @@ rooms/
 ```
 
 `apiKey` が `YOUR_API_KEY` のままの場合は **デモモード**（端末内のみ・非同期）で動作します。
+
+## 🚢 公開（GitHub Pages・自動デプロイ）
+
+`main` ブランチに push すると、GitHub Actions（`.github/workflows/deploy.yml`）が自動で
+GitHub Pages にデプロイします。公開URLは上記のとおりです。
+
+> 初回デプロイ後、リポジトリの **Settings → Pages** で公開が有効になっているか確認できます
+> （ソースは「GitHub Actions」）。デプロイの進捗は **Actions** タブで確認できます。
 
 ## 🛠 技術
 
