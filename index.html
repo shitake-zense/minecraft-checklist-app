@@ -201,9 +201,85 @@ body { background: var(--bg); color: var(--text); font-family: 'Zen Kaku Gothic 
 .r-bar { height: 6px; background: var(--surface2); border-radius: 3px; flex: 1; overflow: hidden; }
 .r-bar-fill { height: 100%; background: var(--yellow); border-radius: 3px; }
 .no-data { color: var(--text-muted); font-size: 12px; padding: 16px; text-align: center; }
+
+/* ルーム表示（ヘッダー） */
+.room-badge {
+  font-size: 11px; padding: 4px 10px; border-radius: 20px; white-space: nowrap;
+  background: #1a2d40; border: 1px solid #2d5a7a; color: var(--blue); font-weight: 700;
+}
+.hidden { display: none !important; }
+
+/* ロビー画面 */
+.lobby-overlay {
+  position: fixed; inset: 0; z-index: 2000; background: var(--bg);
+  display: flex; align-items: center; justify-content: center; padding: 20px; overflow-y: auto;
+}
+.lobby-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 26px 22px; width: 100%; max-width: 420px;
+}
+.lobby-logo { text-align: center; font-size: 34px; margin-bottom: 4px; }
+.lobby-title { text-align: center; font-size: 17px; font-weight: 900; color: var(--green-bright); margin-bottom: 4px; }
+.lobby-sub { text-align: center; font-size: 12px; color: var(--text-dim); margin-bottom: 22px; }
+.lobby-label { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; display: block; }
+.lobby-input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: inherit; font-size: 15px; padding: 11px 13px; margin-bottom: 16px;
+}
+.lobby-input:focus { outline: none; border-color: var(--green); }
+.lobby-input.code { font-family: 'Share Tech Mono', monospace; letter-spacing: 2px; text-transform: uppercase; }
+.lobby-btn {
+  width: 100%; border: 1px solid var(--green); border-radius: 8px; background: var(--green-dim);
+  color: var(--green-bright); cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 700;
+  padding: 12px; transition: all .15s;
+}
+.lobby-btn:hover { background: #1f5c1f; }
+.lobby-btn.secondary { border-color: #2d5a7a; background: #142634; color: var(--blue); }
+.lobby-btn.secondary:hover { background: #1a3040; }
+.lobby-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0; color: var(--text-muted); font-size: 12px; }
+.lobby-divider::before, .lobby-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.lobby-err { color: var(--red); font-size: 12px; min-height: 18px; margin-bottom: 8px; }
+.lobby-recent { margin-top: 18px; }
+.lobby-recent-title { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+.lobby-recent-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text); cursor: pointer; font-family: inherit; font-size: 13px; padding: 8px 11px; margin-bottom: 5px; transition: all .12s;
+}
+.lobby-recent-item:hover { border-color: var(--blue); }
+.lobby-recent-code { font-family: 'Share Tech Mono', monospace; color: var(--blue); margin-left: auto; }
 </style>
 </head>
 <body>
+
+<!-- ロビー画面（ルーム作成・参加） -->
+<div id="lobby-overlay" class="lobby-overlay hidden">
+  <div class="lobby-card">
+    <div class="lobby-logo">⛏️</div>
+    <div class="lobby-title">マイクラ収集チェックリスト</div>
+    <div class="lobby-sub">ルームを作って、みんなで一緒にチェック！</div>
+
+    <label class="lobby-label">👤 あなたの名前</label>
+    <input id="lobby-name" class="lobby-input" placeholder="プレイヤー名を入力" maxlength="20">
+
+    <div id="lobby-err" class="lobby-err"></div>
+
+    <label class="lobby-label">🏠 新しいルームを作る</label>
+    <input id="lobby-roomname" class="lobby-input" placeholder="ルーム名（任意・例: 我が家のサバイバル）" maxlength="30">
+    <button id="lobby-create-btn" class="lobby-btn">＋ ルームを作成</button>
+
+    <div class="lobby-divider">または</div>
+
+    <label class="lobby-label">🔑 コードで参加</label>
+    <input id="lobby-code" class="lobby-input code" placeholder="ルームコード（例: AB12CD）" maxlength="6">
+    <button id="lobby-join-btn" class="lobby-btn secondary">→ 参加する</button>
+
+    <div id="lobby-recent" class="lobby-recent hidden">
+      <div class="lobby-recent-title">最近のルーム</div>
+      <div id="lobby-recent-list"></div>
+    </div>
+  </div>
+</div>
 
 <!-- モーダル -->
 <div id="modal-overlay" class="modal-overlay hidden">
@@ -223,6 +299,9 @@ body { background: var(--bg); color: var(--text); font-family: 'Zen Kaku Gothic 
   <span style="font-size:20px">⛏️</span>
   <span class="header-title">マイクラ統合版 全アイテム収集チェックリスト</span>
   <div class="header-right">
+    <span id="room-badge" class="room-badge hidden"></span>
+    <button id="room-share-btn" class="hdr-btn hidden" title="招待リンクをコピー">🔗 招待</button>
+    <button id="leave-room-btn" class="hdr-btn hidden" title="ルームを退出">🚪 退出</button>
     <span style="font-size:12px;color:var(--text-dim)">👤</span>
     <input id="player-name" class="player-input" placeholder="プレイヤー名を入力" maxlength="20">
     <button id="edit-mode-btn" class="hdr-btn">✏️ 編集</button>
@@ -460,6 +539,12 @@ let searchQuery = "";
 let rankingCatFilter = "__all__";
 // 複数選択 Map<displayName, {orig, display, fromCatOrig, fromCatName, isCustomCat}>
 let selectedItems = new Map();
+// ルーム
+let currentRoom = null;
+let unsubFns = [];
+
+// ルーム内のデータパス
+function rpath(sub) { return `rooms/${currentRoom}/${sub}`; }
 
 // ========== ユーティリティ ==========
 function safeKey(s) { return encodeURIComponent(s).replace(/%/g,'_'); }
@@ -502,7 +587,7 @@ function getAllDisplayNames() {
 
 // ========== Firebase ==========
 function saveCustom() {
-  if (db) set(ref(db,"custom_data"), customData);
+  if (db && currentRoom) set(ref(db,rpath("custom_data")), customData);
 }
 
 function toggleItem(displayName) {
@@ -511,7 +596,7 @@ function toggleItem(displayName) {
     else checkedItems[displayName] = { by: playerName||"?", at: new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}) };
     renderAll(); return;
   }
-  const r = ref(db, `checklist/${safeKey(displayName)}`);
+  const r = ref(db, rpath(`checklist/${safeKey(displayName)}`));
   get(r).then(snap => {
     if (snap.val()) set(r, null);
     else set(r, { by: playerName||"匿名", at: new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}) });
@@ -553,8 +638,8 @@ function doRenameItem(catName, origName, newName, isCustomCat) {
     arr[idx] = newName;
     cats[catName] = arr;
     customData.cats = cats;
-    if (db) get(ref(db,`checklist/${safeKey(origName)}`)).then(snap => {
-      if (snap.val()) { set(ref(db,`checklist/${safeKey(newName)}`),snap.val()); set(ref(db,`checklist/${safeKey(origName)}`),null); }
+    if (db) get(ref(db,rpath(`checklist/${safeKey(origName)}`))).then(snap => {
+      if (snap.val()) { set(ref(db,rpath(`checklist/${safeKey(newName)}`)),snap.val()); set(ref(db,rpath(`checklist/${safeKey(origName)}`)),null); }
     });
     else { if (checkedItems[origName]) { checkedItems[newName]=checkedItems[origName]; delete checkedItems[origName]; } }
   } else {
@@ -567,8 +652,8 @@ function doRenameItem(catName, origName, newName, isCustomCat) {
       rn[origName] = newName;
     }
     customData.renamed = rn;
-    if (db) get(ref(db,`checklist/${safeKey(oldDisplay)}`)).then(snap => {
-      if (snap.val()) { set(ref(db,`checklist/${safeKey(newName)}`),snap.val()); set(ref(db,`checklist/${safeKey(oldDisplay)}`),null); }
+    if (db) get(ref(db,rpath(`checklist/${safeKey(oldDisplay)}`))).then(snap => {
+      if (snap.val()) { set(ref(db,rpath(`checklist/${safeKey(newName)}`)),snap.val()); set(ref(db,rpath(`checklist/${safeKey(oldDisplay)}`)),null); }
     });
     else { if (checkedItems[oldDisplay]) { checkedItems[newName]=checkedItems[oldDisplay]; delete checkedItems[oldDisplay]; } }
   }
@@ -585,7 +670,7 @@ function doDeleteItem(catName, origName, displayName, isCustomCat) {
     if (!customData.deleted.includes(origName)) customData.deleted.push(origName);
   }
   saveCustom();
-  if (db) set(ref(db,`checklist/${safeKey(displayName)}`),null);
+  if (db) set(ref(db,rpath(`checklist/${safeKey(displayName)}`)),null);
   else delete checkedItems[displayName];
 }
 
@@ -625,7 +710,7 @@ function doDeleteCategory(catName) {
   const cats = getCustomCats();
   const items = cats[catName] || [];
   items.forEach(i => {
-    if (db) set(ref(db,`checklist/${safeKey(i)}`),null);
+    if (db) set(ref(db,rpath(`checklist/${safeKey(i)}`)),null);
     else delete checkedItems[i];
   });
   delete cats[catName];
@@ -993,36 +1078,154 @@ function renderRankingTable() {
   content.appendChild(table);
 }
 
-// ========== Firebase購読 ==========
+// ========== Firebase購読（ルーム単位） ==========
+function unsubscribeAll() { unsubFns.forEach(f => { try { f(); } catch(e){} }); unsubFns = []; }
+
 function subscribe() {
+  unsubscribeAll();
   if (!db) { renderAll(); return; }
-  onValue(ref(db,"checklist"), snap => {
+  unsubFns.push(onValue(ref(db,rpath("checklist")), snap => {
     const data = snap.val()||{};
     checkedItems = {};
     Object.keys(data).forEach(k => { checkedItems[fromKey(k)] = data[k]; });
     renderAll();
-  });
-  onValue(ref(db,"custom_data"), snap => {
+  }));
+  unsubFns.push(onValue(ref(db,rpath("custom_data")), snap => {
     customData = snap.val()||{};
-    // 旧custom_itemsデータの自動移行（__deleted__/__renamed__形式）
-    if (!customData.migrated_legacy) {
-      get(ref(db,"custom_items")).then(legacySnap => {
-        const legacy = legacySnap.val();
-        if (legacy) {
-          if (legacy.__deleted__ && Array.isArray(legacy.__deleted__)) {
-            customData.deleted = [...new Set([...(customData.deleted||[]), ...legacy.__deleted__])];
-          }
-          if (legacy.__renamed__ && typeof legacy.__renamed__ === "object") {
-            customData.renamed = { ...legacy.__renamed__, ...(customData.renamed||{}) };
-          }
-          customData.migrated_legacy = true;
-          saveCustom();
-        }
-      });
-    }
     rebuildTabs();
     renderAll();
+  }));
+}
+
+// ========== ルーム管理 ==========
+const RECENT_KEY = "mc_recent_rooms"; // [{code, name}]
+
+function genCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 紛らわしい文字を除外
+  let s = "";
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
+
+function getRecentRooms() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch(e) { return []; }
+}
+function pushRecentRoom(code, name) {
+  let list = getRecentRooms().filter(r => r.code !== code);
+  list.unshift({ code, name: name || "" });
+  list = list.slice(0, 5);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+}
+
+function updateRoomHeader(roomName) {
+  const badge = document.getElementById("room-badge");
+  if (currentRoom) {
+    badge.textContent = "🏠 " + (roomName ? `${roomName} (${currentRoom})` : currentRoom);
+    badge.classList.remove("hidden");
+    document.getElementById("room-share-btn").classList.remove("hidden");
+    document.getElementById("leave-room-btn").classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+    document.getElementById("room-share-btn").classList.add("hidden");
+    document.getElementById("leave-room-btn").classList.add("hidden");
+  }
+}
+
+function enterRoom(code, roomName) {
+  currentRoom = code;
+  localStorage.setItem("mc_room", code);
+  history.replaceState(null, "", "#room=" + code);
+  // 状態リセット
+  checkedItems = {}; customData = {}; selectedItems.clear(); currentFilter = "all"; searchQuery = "";
+  const searchEl = document.getElementById("search-input"); if (searchEl) searchEl.value = "";
+  document.getElementById("lobby-overlay").classList.add("hidden");
+  // ルーム名を取得して表示
+  if (db) {
+    get(ref(db, `rooms/${code}/meta`)).then(snap => {
+      const meta = snap.val() || {};
+      pushRecentRoom(code, meta.name || roomName || "");
+      updateRoomHeader(meta.name || roomName || "");
+    });
+  } else {
+    pushRecentRoom(code, roomName || "");
+    updateRoomHeader(roomName || "");
+  }
+  const b = document.getElementById("status-badge");
+  if (db) { b.textContent = "🔥 接続中..."; b.className = "status-badge demo"; }
+  rebuildTabs();
+  subscribe();
+}
+
+function leaveRoom() {
+  unsubscribeAll();
+  currentRoom = null;
+  localStorage.removeItem("mc_room");
+  history.replaceState(null, "", location.pathname + location.search);
+  checkedItems = {}; customData = {}; selectedItems.clear(); updateSelectBar();
+  if (editMode) { editMode = false; const eb = document.getElementById("edit-mode-btn"); eb.textContent = "✏️ 編集"; eb.classList.remove("edit-active"); }
+  updateRoomHeader();
+  showLobby();
+}
+
+async function createRoom() {
+  const errEl = document.getElementById("lobby-err");
+  const name = document.getElementById("lobby-name").value.trim();
+  if (!name) { errEl.textContent = "あなたの名前を入力してください"; return; }
+  playerName = name; localStorage.setItem("mc_player", name);
+  document.getElementById("player-name").value = name;
+
+  const roomName = document.getElementById("lobby-roomname").value.trim();
+  let code = genCode();
+  if (db) {
+    // 衝突回避（ほぼ起きないが念のため）
+    for (let i = 0; i < 5; i++) {
+      const snap = await get(ref(db, `rooms/${code}/meta`));
+      if (!snap.exists()) break;
+      code = genCode();
+    }
+    await set(ref(db, `rooms/${code}/meta`), { name: roomName, created: Date.now(), owner: name });
+  }
+  enterRoom(code, roomName);
+}
+
+async function joinRoom(code) {
+  const errEl = document.getElementById("lobby-err");
+  const name = document.getElementById("lobby-name").value.trim();
+  if (!name) { errEl.textContent = "あなたの名前を入力してください"; return; }
+  code = (code || "").trim().toUpperCase();
+  if (!code) { errEl.textContent = "ルームコードを入力してください"; return; }
+  playerName = name; localStorage.setItem("mc_player", name);
+  document.getElementById("player-name").value = name;
+
+  if (db) {
+    const snap = await get(ref(db, `rooms/${code}/meta`));
+    if (!snap.exists()) { errEl.textContent = "そのルームは見つかりませんでした"; return; }
+  }
+  errEl.textContent = "";
+  enterRoom(code);
+}
+
+function renderRecentRooms() {
+  const wrap = document.getElementById("lobby-recent");
+  const listEl = document.getElementById("lobby-recent-list");
+  const recents = getRecentRooms();
+  if (recents.length === 0) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  listEl.innerHTML = "";
+  recents.forEach(r => {
+    const btn = document.createElement("button");
+    btn.className = "lobby-recent-item";
+    btn.innerHTML = `<span>${r.name ? r.name : "（名称未設定）"}</span><span class="lobby-recent-code">${r.code}</span>`;
+    btn.onclick = () => joinRoom(r.code);
+    listEl.appendChild(btn);
   });
+}
+
+function showLobby() {
+  document.getElementById("lobby-name").value = playerName || "";
+  document.getElementById("lobby-err").textContent = "";
+  renderRecentRooms();
+  document.getElementById("lobby-overlay").classList.remove("hidden");
 }
 
 // ========== 初期化 ==========
@@ -1067,18 +1270,50 @@ window.addEventListener("DOMContentLoaded", () => {
     document.getElementById("ranking-panel").classList.toggle("collapsed");
   };
 
-  // Firebase or デモ
+  // ---- ロビー（ルーム作成・参加） ----
+  document.getElementById("lobby-create-btn").onclick = () => createRoom();
+  document.getElementById("lobby-join-btn").onclick = () => joinRoom(document.getElementById("lobby-code").value);
+  document.getElementById("lobby-code").addEventListener("keydown", e => { if (e.key === "Enter") joinRoom(e.target.value); });
+  document.getElementById("lobby-roomname").addEventListener("keydown", e => { if (e.key === "Enter") createRoom(); });
+
+  // ---- ルーム退出・招待リンク ----
+  document.getElementById("leave-room-btn").onclick = () => {
+    if (confirm("ルームを退出しますか？")) leaveRoom();
+  };
+  document.getElementById("room-share-btn").onclick = async () => {
+    const url = location.origin + location.pathname + "#room=" + currentRoom;
+    const btn = document.getElementById("room-share-btn");
+    try {
+      await navigator.clipboard.writeText(url);
+      const orig = btn.textContent; btn.textContent = "✅ コピー済み";
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    } catch(e) {
+      prompt("この招待リンクを共有してください:", url);
+    }
+  };
+
+  // ステータスバッジ（接続表示）
   if (DEMO_MODE) {
     document.getElementById("status-badge").textContent = "⚠️ デモモード";
     document.getElementById("status-badge").className = "status-badge demo";
-    rebuildTabs(); renderAll();
   } else {
-    document.getElementById("status-badge").textContent = "🔥 接続中...";
-    subscribe();
-    setTimeout(() => {
+    setInterval(() => {
       const b = document.getElementById("status-badge");
-      if (b.textContent === "🔥 接続中...") { b.textContent="🔥 Firebase接続済み"; b.className="status-badge live"; }
+      if (currentRoom && b.textContent === "🔥 接続中...") { b.textContent = "🔥 Firebase接続済み"; b.className = "status-badge live"; }
     }, 2000);
+  }
+
+  // 初期ルーム判定（URLハッシュ #room=XXX または前回のルーム）
+  const hashMatch = location.hash.match(/room=([A-Za-z0-9]+)/);
+  const hashRoom = hashMatch ? hashMatch[1].toUpperCase() : null;
+  const savedRoom = localStorage.getItem("mc_room");
+  const startRoom = hashRoom || savedRoom;
+
+  if (startRoom && playerName) {
+    enterRoom(startRoom);
+  } else {
+    if (hashRoom) document.getElementById("lobby-code").value = hashRoom;
+    showLobby();
   }
 });
 </script>
